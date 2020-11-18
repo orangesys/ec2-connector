@@ -13,7 +13,6 @@ builds:
       - linux
       - windows
       - darwin
-      - arm
 archives:
   - replacements:
       darwin: Darwin
@@ -21,7 +20,6 @@ archives:
       windows: Windows
       386: i386
       amd64: x86_64
-      arm: Arm
 checksum:
   name_template: 'checksums.txt'
 snapshot:
