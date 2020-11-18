@@ -22,7 +22,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -36,14 +35,9 @@ import (
 
 // connectCmd represents the connect command
 var connectCmd = &cobra.Command{
-	Use:   "connect",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Use:   "connect [instance ID]",
+	Short: "Connect instances.",
+	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		instanceID := args[0]
 
@@ -89,18 +83,18 @@ to quickly create a Cobra application.`,
 		sess.Stdin = os.Stdin
 
 		modes := ssh.TerminalModes{
-			ssh.ECHO:          0,     // 禁用回显（0禁用，1启动）
-			ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
-			ssh.TTY_OP_OSPEED: 14400, //output speed = 14.4kbaud
+			ssh.ECHO:          0,
+			ssh.TTY_OP_ISPEED: 14400,
+			ssh.TTY_OP_OSPEED: 14400,
 		}
 		if err = sess.RequestPty("linux", 32, 160, modes); err != nil {
-			log.Fatalf("request pty error: %s", err.Error())
+			return errors.Wrap(err, fmt.Sprintf("request pty error: %s", err.Error()))
 		}
 		if err = sess.Shell(); err != nil {
-			log.Fatalf("start shell error: %s", err.Error())
+			return errors.Wrap(err, fmt.Sprintf("start shell error: %s", err.Error()))
 		}
 		if err = sess.Wait(); err != nil {
-			log.Fatalf("return error: %s", err.Error())
+			return errors.Wrap(err, fmt.Sprintf("return error: %s", err.Error()))
 		}
 		return nil
 	},
