@@ -1,6 +1,6 @@
 # ec2-connector
 
-1. aws-vault exec <aws-profile>
+1. aws-vault exec '<aws-profile>'
 
 2. ec2-connector list 
 
