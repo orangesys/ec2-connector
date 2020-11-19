@@ -8,6 +8,6 @@
 
  InstanceID		OwnerId
  ----			----
- i-0f76656428cfb22c3	099713105233%
+ i-0f76656428cfb22c3	099778905233%
  ```
-3. ec2-connector connect i-0f76656428cfb22c3
+3. ec2-connector connect i-0f76656567cfb22c3
