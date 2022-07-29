@@ -23,14 +23,18 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2instanceconnect"
+	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/orangesys/ec2-connector/pkg/loki"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // connectCmd represents the connect command
@@ -42,6 +46,11 @@ var connectCmd = &cobra.Command{
 		instanceID := args[0]
 
 		mySession := session.Must(session.NewSession())
+		// get user arn
+		_sts := sts.New(mySession, aws.NewConfig().WithRegion("ap-northeast-1"))
+		userInfo, err := _sts.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+		userArn := *userInfo.Arn
+
 		svc := ec2.New(mySession, aws.NewConfig().WithRegion("ap-northeast-1"))
 		out, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
 			InstanceIds: []*string{
@@ -72,28 +81,75 @@ var connectCmd = &cobra.Command{
 		}
 		defer sshClient.Close()
 
-		sess, err := sshClient.NewSession()
+		session, err := sshClient.NewSession()
 		if err != nil {
 			return err
 		}
-		defer sess.Close()
+		defer session.Close()
 
-		sess.Stdout = os.Stdout
-		sess.Stderr = os.Stderr
-		sess.Stdin = os.Stdin
+		session.Stdout = os.Stdout
+		session.Stderr = os.Stderr
+		in, err := session.StdinPipe()
+		defer in.Close()
+
+		buf := bytes.NewBufferString("")
+
+		go func() {
+			for {
+				var buffer [1024]byte
+				n, err := os.Stdin.Read(buffer[:])
+				if err != nil {
+					fmt.Println("read error:", err)
+				}
+				in.Write(buffer[:n])
+				// Loki log
+				buf.WriteString(string(buffer[:n]))
+
+				if strings.Contains(buf.String(), "\u007f") {
+					str := buf.String()
+					buf.Reset()
+					if len(str) > 2 {
+						buf.WriteString(str[:len(str)-2])
+					} else {
+						buf.WriteString(str[:len(str)-1])
+					}
+				}
+				if strings.Contains(buf.String(), "\r") {
+					var logger = loki.NewLog()
+					cmd := strings.Replace(buf.String(), "\r", "", -1)
+					logger.Info().Str("cmd", cmd).Str("arn", userArn).Msg("user operator record")
+					buf.Reset()
+				}
+
+			}
+		}()
 
 		modes := ssh.TerminalModes{
-			ssh.ECHO:          0,
+			ssh.ECHO:          1,
 			ssh.TTY_OP_ISPEED: 14400,
 			ssh.TTY_OP_OSPEED: 14400,
 		}
-		if err = sess.RequestPty("linux", 32, 160, modes); err != nil {
-			return errors.Wrap(err, fmt.Sprintf("request pty error: %s", err.Error()))
+
+		fileDescriptor := int(os.Stdin.Fd())
+
+		if terminal.IsTerminal(fileDescriptor) {
+			originalState, err := terminal.MakeRaw(fileDescriptor)
+			if err != nil {
+			}
+			defer terminal.Restore(fileDescriptor, originalState)
+
+			termWidth, termHeight, err := terminal.GetSize(fileDescriptor)
+			if err != nil {
+			}
+
+			err = session.RequestPty("xterm-256color", termHeight, termWidth, modes)
+			if err != nil {
+			}
 		}
-		if err = sess.Shell(); err != nil {
+		if err = session.Shell(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("start shell error: %s", err.Error()))
 		}
-		if err = sess.Wait(); err != nil {
+		if err = session.Wait(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("return error: %s", err.Error()))
 		}
 		return nil
